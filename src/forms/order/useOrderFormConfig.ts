@@ -5,10 +5,10 @@ import { resolveOrderDefaults } from './resolvers/resolveOrderDefaults'
 import { resolveOrderSchemas } from './resolvers/resolveOrderSchemas'
 
 export function useOrderFormConfig() {
-  const { can } = usePermissions()
+  const { can, ctx } = usePermissions()
 
   return useMemo(() => {
-    const options  = resolveOrderOptions(can)
+    const options  = resolveOrderOptions(can, ctx)
     const defaults = resolveOrderDefaults(options)
     const schemas  = resolveOrderSchemas(options, defaults)
 
@@ -21,5 +21,5 @@ export function useOrderFormConfig() {
         priority: { options: options.priorities },
       },
     }
-  }, [can])
+  }, [can, ctx])
 }

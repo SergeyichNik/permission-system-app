@@ -1,23 +1,16 @@
 import { resolveSelectOptions } from '../../../utils/optionUtils'
 import type { OptionTransform } from '../../../utils/optionUtils'
+import type { UserContext } from '../../../permissions/types'
 import { TASK_TYPE_OPTIONS } from '../../../options/taskTypeOptions'
 import { PRIORITY_OPTIONS } from '../../../options/priorityOptions'
 
 const taskTypeTransform: OptionTransform = {
-  allowedValues: ['bug', 'task', 'feature'],
-  modify: {
-    bug: (opt, can) => ({
-      ...opt,
-      label: 'Bug Report',
-      disabled: !can('orders:task:create_feature'),
-      disabledReason: 'No permission to create bug tasks',
-    }),
-  },
+  allowedValues: ['action_pp_basic', 'action_pp_view', 'action_pp_destroy'],
 }
 
-export function resolveOrderOptions(can: (action: string) => boolean) {
+export function resolveOrderOptions(can: (action: string) => boolean, ctx: UserContext) {
   return {
-    taskTypes: resolveSelectOptions(TASK_TYPE_OPTIONS, can, taskTypeTransform),
-    priorities: resolveSelectOptions(PRIORITY_OPTIONS, can),
+    taskTypes: resolveSelectOptions(TASK_TYPE_OPTIONS, can, ctx, taskTypeTransform),
+    priorities: resolveSelectOptions(PRIORITY_OPTIONS, can, ctx),
   }
 }

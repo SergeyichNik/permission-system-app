@@ -1,18 +1,20 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { usePermissionsStore } from '../store/permissionsStore'
 import { resolvePermission } from './resolver'
-import type { Action, UserContext } from './types'
+import type { Action } from './types'
 
 export function usePermissions() {
   const { roles, operationIds, featureFlags } = usePermissionsStore()
 
-  const can = useCallback(
-    (action: string): boolean => {
-      const ctx: UserContext = { roles, operationIds, featureFlags }
-      return resolvePermission(action as Action, ctx)
-    },
+  const ctx = useMemo(
+    () => ({ roles, operationIds, featureFlags }),
     [roles, operationIds, featureFlags]
   )
 
-  return { can }
+  const can = useCallback(
+    (action: string): boolean => resolvePermission(action as Action, ctx),
+    [ctx]
+  )
+
+  return { can, ctx }
 }
