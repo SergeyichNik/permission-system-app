@@ -5,7 +5,7 @@ import { TASK_TYPE_OPTIONS } from '../../../options/taskTypeOptions'
 import { PRIORITY_OPTIONS } from '../../../options/priorityOptions'
 
 const taskTypeTransform: OptionTransform = {
-  allowedValues: ['action_pp_basic', 'action_pp_view', 'action_pp_destroy'],
+  allowedValues: ['action_basic_view', 'action_admin_only', 'action_pp_export'],
 }
 
 export function resolveOrderOptions(can: (action: string) => boolean, ctx: UserContext) {

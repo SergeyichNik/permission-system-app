@@ -4,6 +4,7 @@ export interface MasterOption<TMeta = unknown> {
   id: string
   label: string
   meta?: TMeta
+  allowedIn?: string[]
   policy: (can: (action: string) => boolean, ctx: UserContext) => boolean
 }
 

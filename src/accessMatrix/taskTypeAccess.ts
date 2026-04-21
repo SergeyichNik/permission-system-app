@@ -2,20 +2,15 @@ import type { TaskTypeAccess } from './types'
 
 export const TASK_TYPE_ACCESS: Record<string, TaskTypeAccess> = {
 
-  // ── No restrictions — visible to everyone ───────────────────────────────
-  'action_pp_basic': {},
-  'action_pp_view':  {},
+  // ── Visible to everyone ──────────────────────────────────────────────────
+  'action_basic_view': {},
 
-  // ── Role whitelist — only specific roles ────────────────────────────────
-  'action_pp_destroy': {
+  // ── Role whitelist only ──────────────────────────────────────────────────
+  'action_admin_only': {
     roles: ['admin'],
   },
 
-  'action_pp_approve': {
-    roles: ['admin', 'manager'],
-  },
-
-  // ── OperationId whitelist ────────────────────────────────────────────────
+  // ── OperationId only ─────────────────────────────────────────────────────
   'action_pp_export': {
     operationIds: ['OP_EXPORT', 'OP_PREMIUM'],
   },
@@ -26,13 +21,55 @@ export const TASK_TYPE_ACCESS: Record<string, TaskTypeAccess> = {
     operationIds: ['OP_BULK'],
   },
 
-  // ── Blacklist — everyone except courier ─────────────────────────────────
-  'action_pp_internal': {
+  // ── Blacklist role, hard — flag cannot lift this ─────────────────────────
+  'action_no_courier_ever': {
     excludeRoles: ['courier'],
   },
 
-  // ── Base rule + flag extends access ─────────────────────────────────────
+  // ── Blacklist operationId, hard ──────────────────────────────────────────
+  'action_no_readonly': {
+    excludeOperationIds: ['OP_READONLY', 'OP_GUEST'],
+  },
+
+  // ── Blacklist role, soft — flag CAN lift the ban ─────────────────────────
   'action_pp_special': {
+    excludeRoles: ['courier'],
+    extendedAccess: [
+      {
+        flag: 'showForCourier',
+        roles: ['courier'],
+        overrideExcludes: true,
+      },
+    ],
+  },
+
+  // ── Blacklist operationId, soft — flag lifts the ban ─────────────────────
+  'action_pp_unblockable': {
+    excludeOperationIds: ['OP_READONLY'],
+    extendedAccess: [
+      {
+        flag: 'unblockReadonly',
+        operationIds: ['OP_READONLY'],
+        overrideExcludes: true,
+      },
+    ],
+  },
+
+  // ── Blacklist role + flag lifts for role AND operationId ─────────────────
+  'action_pp_partner': {
+    excludeRoles: ['courier', 'guest'],
+    extendedAccess: [
+      {
+        flag: 'partnerAccess',
+        roles: ['courier'],
+        operationIds: ['OP_PARTNER'],
+        overrideExcludes: true,
+      },
+    ],
+  },
+
+  // ── Whitelist + flag adds more roles ─────────────────────────────────────
+  'action_pp_extendable': {
     roles: ['admin'],
     extendedAccess: [
       {
@@ -42,7 +79,18 @@ export const TASK_TYPE_ACCESS: Record<string, TaskTypeAccess> = {
     ],
   },
 
-  // ── Multiple flag extensions ─────────────────────────────────────────────
+  // ── Whitelist + flag adds operationId ────────────────────────────────────
+  'action_pp_priority': {
+    operationIds: ['OP_PREMIUM'],
+    extendedAccess: [
+      {
+        flag: 'extendedPriority',
+        operationIds: ['OP_TEAM', 'OP_BUSINESS'],
+      },
+    ],
+  },
+
+  // ── Multiple flags, each adds independently ──────────────────────────────
   'action_pp_advanced': {
     roles: ['admin'],
     extendedAccess: [
@@ -54,22 +102,34 @@ export const TASK_TYPE_ACCESS: Record<string, TaskTypeAccess> = {
         flag: 'showForPartners',
         operationIds: ['OP_PARTNER'],
       },
-    ],
-  },
-
-  // ── Flag required for everyone ───────────────────────────────────────────
-  'action_xx_experimental': {
-    extendedAccess: [
       {
-        flag: 'experimentalTasks',
-        roles: ['admin', 'manager', 'courier'],
+        flag: 'showForTeams',
+        roles: ['manager'],
+        operationIds: ['OP_TEAM'],
       },
     ],
   },
 
-  // ── Domain-specific examples ─────────────────────────────────────────────
+  // ── Flag required, no base access ────────────────────────────────────────
+  'action_xx_experimental': {
+    extendedAccess: [
+      {
+        flag: 'experimentalTasks',
+        roles: ['admin', 'manager'],
+      },
+    ],
+  },
+
+  // ── Blacklist + flag lifts + domain filtered via allowedIn ───────────────
   'action_archive_restore': {
     roles: ['admin'],
     excludeRoles: ['courier'],
+    extendedAccess: [
+      {
+        flag: 'restoreForCourier',
+        roles: ['courier'],
+        overrideExcludes: true,
+      },
+    ],
   },
 }
