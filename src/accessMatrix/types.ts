@@ -1,14 +1,17 @@
 export interface ExtendedAccess {
   flag: string
-  roles?: string[]
-  operationIds?: string[]
-  overrideExcludes?: boolean
+  addRoles?: string[]
+  addOperationIds?: string[]
+  removeExcludeRoles?: string[]
+  removeExcludeOperationIds?: string[]
 }
 
-export interface TaskTypeAccess {
+export interface AccessRule {
   roles?: string[]
   operationIds?: string[]
   excludeRoles?: string[]
   excludeOperationIds?: string[]
   extendedAccess?: ExtendedAccess[]
 }
+
+export type AccessMatrix<TKey extends string = string> = Record<TKey, AccessRule>
