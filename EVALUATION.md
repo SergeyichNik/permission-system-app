@@ -10,12 +10,12 @@
 
 ---
 
-## Score-card (итог: 67/90 ≈ 7.4/10 — было 63/90)
+## Score-card (итог: 68/90 ≈ 7.6/10 — было 63/90)
 
 | # | Критерий                                 | Балл  | Δ   |
 |---|------------------------------------------|-------|-----|
 | 1 | Type safety                              | 8/10  | +1  |
-| 2 | Архитектура / разделение ответственности | 8/10  | —   |
+| 2 | Архитектура / разделение ответственности | 9/10  | +1  |
 | 3 | Расширяемость                            | 8/10  | —   |
 | 4 | Читаемость / DX                          | 8/10  | —   |
 | 5 | Производительность                       | 7/10  | —   |
@@ -24,7 +24,7 @@
 | 8 | Production-readiness                     | 6/10  | +2  |
 | 9 | Соответствие industry standards          | 7/10  | —   |
 
-**Вердикт:** после первого прохода архитектура крепкая, boot-гонка закрыта, мёртвая domain-фильтрация оживлена. Для переноса в боевой проект остаётся разобраться с пунктами 5, 6 и добить остальную часть Production-readiness (audit-log, reset, runtime-валидация, реестр типов, тесты).
+**Вердикт:** после двух проходов архитектура чистая (generic-примитивы отделены от UI-обёрток), boot-гонка закрыта, domain-фильтрация оживлена. Для переноса в боевой проект остаётся добить Production-readiness (audit-log, reset, runtime-валидация, реестр типов, тесты).
 
 ---
 
@@ -46,17 +46,18 @@
 
 ---
 
-## 2. Архитектура / разделение ответственности — 8/10
+## 2. Архитектура / разделение ответственности — 9/10
 
 **Что хорошо**
 - Ортогональность Part 1 / Part 2: политики отвечают за «named действия» (`can('orders:page:view')`), матрица — за «коллекции однотипных сущностей» (task types, columns). Правильное разделение — не попытка уместить всё в одну абстракцию.
 - `resolveAccess<TKey>` (`src/accessMatrix/resolveAccess.ts:37`) generic по ключу — одна логика для taskType и column, добавление новой матрицы = тривиальное копирование.
+- **[Сделано]** Primitive-слой для массивов: `src/access/` содержит `AccessGatedItem`, `filterByPolicy`, `filterByDomain`, `filterAccessible`. Эти примитивы не зависят от `<select>`, `MasterOption` или любого UI-компонента — пригодны для табов, меню, кнопок, колонок, любых массивов gated-элементов.
+- `MasterOption` теперь `extends AccessGatedItem`, а `resolveSelectOptions` строится как композиция: `filterAccessible → allowedValues escape-hatch → strip policy → modify`. Select-specific остаётся там, где ему место; generic отделён.
 - `MasterOption.policy` (`src/utils/optionUtils.ts`) — единственная точка входа для проверки доступа к опциям. Политика получает и `can`, и `ctx` — можно смешивать Part 1 и Part 2.
-- `resolveSelectOptions` pipeline (`policy → allowedIn → allowedValues → modify → strip policy`) разделяет «кто видит» (matrix) и «где показывается» (domain filtering). **[Сделано]** domain-фильтрация теперь реализована, см. отдельный блок ниже.
 
 **Что плохо**
-- `canSeeTaskType` и `canSeeColumn` — одинаковые однострочные обёртки (`taskTypeAccess.ts:196`, `columnAccess.ts:39`). Копипаста с риском расхождений.
-- Нет места для композиции политик (`and(p1, p2)`, `or(p1, p2)`). Пока делается вручную внутри PolicyFn — ок для текущего объёма, но при росте приведёт к дублированию.
+- `canSeeTaskType` и `canSeeColumn` — одинаковые однострочные обёртки (`taskTypeAccess.ts:196`, `columnAccess.ts:39`). Копипаста с риском расхождений. (Это другой механизм — матрица, а не массив, поэтому новые примитивы к нему напрямую не применимы.)
+- Нет места для композиции политик (`and(p1, p2)`, `or(p1, p2)`). Пока делается вручную внутри PolicyFn — ок для текущего объёма.
 
 **Рекомендация**
 - Factory `createMatrixAccess<TKey>(matrix)` вместо двух обёрток или вызывать `resolveAccess(MATRIX, id, ctx)` напрямую.
@@ -225,7 +226,7 @@
 
 ---
 
-## Сделано в первом проходе
+## Сделано в первом проходе (Part 5)
 
 | # | Что                                                                                           | Где                                                                  |
 |---|-----------------------------------------------------------------------------------------------|----------------------------------------------------------------------|
@@ -236,7 +237,30 @@
 | 5 | Scratch-комментарии удалены                                                                   | `src/options/priorityOptions.ts`                                     |
 | 6 | `process.env.NODE_ENV` → `import.meta.env.DEV` (vite-native)                                  | `src/accessMatrix/validateAccess.ts`                                 |
 
-`npm run build` — зелёный.
+## Сделано во втором проходе (Part 6)
+
+| # | Что                                                                                           | Где                                                                  |
+|---|-----------------------------------------------------------------------------------------------|----------------------------------------------------------------------|
+| 1 | Выделены generic-примитивы для массивов gated-элементов: `AccessGatedItem`, `filterByPolicy`, `filterByDomain`, `filterAccessible` | `src/access/types.ts`, `src/access/accessible.ts`, `src/access/index.ts` |
+| 2 | `MasterOption extends AccessGatedItem`; `resolveSelectOptions` теперь композиция примитивов (а не своя встроенная логика фильтрации) | `src/utils/optionUtils.ts`                                           |
+
+**Зачем Part 6:** имя `optionUtils` было слишком узким — логика фильтрации по policy+domain применима не только к селектам (табы, sidebar, кнопки действий, колонки). Теперь в `src/access/` лежат чистые примитивы без зависимости от `<select>`, `MasterOption` или UI-компонентов. В будущем табы/меню/кнопки используют `filterAccessible` напрямую, без `MasterOption`-обёрток.
+
+**Три сценария использования:**
+
+```ts
+// 1) Только policy — гейтинг без доменов (action-кнопки, feature-карточки)
+filterByPolicy(actions, can, ctx)
+
+// 2) Только domain — переключение контекста без permission-гейтинга
+// (сайдбар-разделы, когда роут уже защищён ProtectedRoute)
+filterByDomain(tabs, 'archive')
+
+// 3) Всё сразу
+filterAccessible(items, can, ctx, 'my')
+```
+
+`npm run build` — зелёный после обоих проходов.
 
 ---
 
@@ -286,11 +310,13 @@
 - `src/permissions/types.ts` — `Action`, `UserContext`, `PolicyFn`, `CanFn`
 - `src/permissions/usePermissions.ts` — строго типизированный `can`
 - `src/permissions/resolver.ts` — `resolvePermission` (нужен dev-warning)
+- `src/access/types.ts` — `AccessGatedItem`
+- `src/access/accessible.ts` — `filterByPolicy`, `filterByDomain`, `filterAccessible`
 - `src/accessMatrix/types.ts` — `AccessRule`, `ExtendedAccess`
 - `src/accessMatrix/resolveAccess.ts` — главный резолвер матрицы
 - `src/accessMatrix/validateAccess.ts` — нужно расширить
 - `src/accessMatrix/taskTypeAccess.ts` — 17 boundary cases
-- `src/utils/optionUtils.ts` — `MasterOption`, `OptionTransform`, `resolveSelectOptions(… , domain?)`
+- `src/utils/optionUtils.ts` — `MasterOption extends AccessGatedItem`, `OptionTransform`, `resolveSelectOptions(… , domain?)` как тонкая обёртка над примитивами
 - `src/forms/order/resolvers/resolveOrderOptions.ts` — пример использования domain
 - `src/forms/order/useOrderFormConfig.ts` — пробрасывает `domain` сверху
 - `src/store/permissionsStore.ts` — `initialized`, нужен reset + runtime-валидация

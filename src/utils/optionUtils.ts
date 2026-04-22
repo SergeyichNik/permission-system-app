@@ -1,10 +1,11 @@
+import type { AccessGatedItem } from '../access/types'
+import { filterAccessible } from '../access/accessible'
 import type { CanFn, UserContext } from '../permissions/types'
 
-export interface MasterOption<TMeta = unknown> {
+export interface MasterOption<TMeta = unknown> extends AccessGatedItem {
   id: string
   label: string
   meta?: TMeta
-  allowedIn?: string[]
   policy: (can: CanFn, ctx: UserContext) => boolean
 }
 
@@ -33,12 +34,10 @@ export function resolveSelectOptions<TMeta>(
   transform?: OptionTransform<TMeta>,
   domain?: string
 ): ResolvedOption<TMeta>[] {
-  return masterList
-    .filter((opt) => opt.policy(can, ctx))
-    .filter((opt) => !domain || !opt.allowedIn || opt.allowedIn.includes(domain))
-    .filter((opt) =>
-      !transform?.allowedValues ||
-      transform.allowedValues.includes(opt.id)
+  return filterAccessible(masterList, can, ctx, domain)
+    .filter(
+      (opt) =>
+        !transform?.allowedValues || transform.allowedValues.includes(opt.id)
     )
     .map(({ policy: _policy, ...opt }) => opt as ResolvedOption<TMeta>)
     .map((opt) => transform?.modify?.[opt.id]?.(opt, can) ?? opt)
