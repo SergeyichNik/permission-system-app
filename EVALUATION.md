@@ -10,21 +10,21 @@
 
 ---
 
-## Score-card (итог: 70/90 ≈ 7.8/10 — было 63/90)
+## Score-card (итог: 72/90 ≈ 8.0/10 — было 63/90)
 
 | # | Критерий                                 | Балл  | Δ   |
 |---|------------------------------------------|-------|-----|
 | 1 | Type safety                              | 8/10  | +1  |
-| 2 | Архитектура / разделение ответственности | 9/10  | +1  |
+| 2 | Архитектура / разделение ответственности | 10/10 | +2  |
 | 3 | Расширяемость                            | 9/10  | +1  |
 | 4 | Читаемость / DX                          | 9/10  | +1  |
 | 5 | Производительность                       | 7/10  | —   |
-| 6 | Тестируемость                            | 7/10  | —   |
+| 6 | Тестируемость                            | 8/10  | +1  |
 | 7 | Корректность / boundary cases            | 8/10  | +1  |
 | 8 | Production-readiness                     | 6/10  | +2  |
 | 9 | Соответствие industry standards          | 7/10  | —   |
 
-**Вердикт:** после трёх проходов архитектура чистая (generic-примитивы отделены от UI-обёрток, overrides декларативные и работают с любой формой объекта), boot-гонка закрыта, domain-фильтрация оживлена. Для переноса в боевой проект остаётся добить Production-readiness (audit-log, reset, runtime-валидация, реестр типов, тесты).
+**Вердикт:** после четырёх проходов структура соответствует FSD, границы между layers чистые, direction импортов правильный, provider-based DI для политик, ProtectedRoute развязан от `ROUTE_CONFIG`. Для переноса в боевой проект остаётся Production-readiness (audit-log, reset, runtime-валидация, реестр типов, тесты).
 
 ---
 
@@ -326,7 +326,77 @@ overrides: [
 - `Partial<T>` — статический патч, shallow merge. `meta` как вложенный объект **заменяется целиком**.
 - `(item: T) => Partial<T>` — функция, читает текущее состояние (включая результат предыдущих overrides в цепочке) и возвращает патч. Используй когда нужен nested merge (`{ ...item.meta, color: 'red' }`).
 
-`npm run build` — зелёный после всех трёх проходов.
+## Сделано в четвёртом проходе (Part 8)
+
+**Переводим структуру в FSD** — slice-based layout, правильная direction импортов, DI для политик.
+
+**Новая структура папок:**
+
+```
+src/
+├── app/                                      // композиция приложения
+│   ├── App.tsx
+│   ├── providers/
+│   │   ├── PermissionsProvider.tsx          // setPermissions из props
+│   │   └── PoliciesProvider.tsx             // отдаёт appPolicies в PoliciesContext
+│   ├── routing/
+│   │   ├── AppRoutes.tsx                    // мап ROUTE_CONFIG → ProtectedRoute
+│   │   └── routeConfig.tsx                  // ROUTE_CONFIG
+│   └── model/
+│       ├── common-policies.ts               // common:dashboard:view и т.д.
+│       └── policies.ts                      // appPolicies: агрегат всех features
+│
+├── features/
+│   ├── access-gate/                         // Can, ProtectedRoute, usePermissions
+│   ├── orders/     model/{policies,tabsConfig}.ts
+│   ├── export/     model/policies.ts
+│   ├── admin/      model/policies.ts
+│   └── order-form/ model/useOrderFormConfig.ts + lib/resolvers/
+│
+├── entities/
+│   ├── session/     model/store.ts + lib/predicates.ts (isAdmin, isManager…)
+│   ├── task-type/   model/{access,options}.ts (TASK_TYPE_ACCESS + TASK_TYPE_OPTIONS с overrides)
+│   ├── column/      model/access.ts (COLUMN_ACCESS + canSeeColumn)
+│   └── priority/    model/options.ts (PRIORITY_OPTIONS)
+│
+├── shared/
+│   ├── config/
+│   │   └── actions.ts                       // Action union (flat)
+│   └── lib/
+│       ├── access/                          // generic array-primitives
+│       ├── access-matrix/                   // generic matrix mechanism
+│       ├── access-policy/                   // generic named-policy + PoliciesContext
+│       └── select-options/                  // MasterOption + resolveSelectOptions
+│
+└── main.tsx
+```
+
+**Ключевые переработки:**
+
+| # | Что изменилось                                                                           | Почему                                                              |
+|---|------------------------------------------------------------------------------------------|---------------------------------------------------------------------|
+| 1 | `resolvePermission(action, policies, ctx)` — generic, принимает реестр политик параметром | shared не может знать feature-specific policies; теперь DI через провайдер |
+| 2 | `PoliciesContext` в `shared/lib/access-policy/` + `PoliciesProvider` в `app/providers/`  | feature `access-gate` читает политики через Context, а не прямой импорт |
+| 3 | `appPolicies: Record<Action, PolicyFn>` собирается в `app/model/policies.ts` из features | Каждая feature экспортирует свой `Partial<Record<Action, PolicyFn>>`, app мёржит |
+| 4 | `ProtectedRoute` принимает проп `redirectAction?: Action`                                | развязан от `ROUTE_CONFIG`; composition-логика перенесена в `app/routing/AppRoutes.tsx` |
+| 5 | `Action` union вынесен в `shared/config/actions.ts`                                      | прагматичный compromise: строгое FSD требует собирать Action из feature-scoped union'ов, но это даёт painful generic propagation. Для пилота — flat union в shared/config |
+| 6 | `PermissionsProvider` отделён от `App.tsx`                                               | App стал композицией провайдеров, single responsibility |
+| 7 | Каждая FSD-слайс имеет свой barrel (`index.ts`)                                          | публичный API slice'а, импорты идут через `entities/session`, а не по внутренним путям |
+
+**Import direction после Part 8:**
+
+```
+app → features → entities → shared/lib → shared/config
+```
+
+Никто из слоёв ниже не импортирует из слоя выше. Проверено: `shared/lib/access-policy` импортирует только из `shared/config`; `entities/session/lib/predicates` — только из `shared`; `features/access-gate/model/usePermissions` — из `shared` и `entities/session`; `app/model/policies` — из `features` (вверх-вниз-вверх для app разрешено, он — топ-слой).
+
+**Остающиеся FSD-компромиссы (для реального проекта):**
+
+- **`Action` во `shared/config`** — должен быть в `app/config/actions.ts`, собирая из `features/<name>/model/actions.ts`. Отложено из-за сложности propagation CanFn<A> через все generic'и в `shared/lib/access`. При переносе в боевой проект — развернуть.
+- **`canSeeTaskType` / `canSeeColumn`** — обёртки над `resolveAccess` дублируются в двух entities. Можно factory `createEntityAccessChecker(matrix, label)` в shared, или вызывать `resolveAccess(MATRIX, id, ctx)` напрямую.
+
+`npm run build` — зелёный после всех четырёх проходов.
 
 ---
 
@@ -373,20 +443,51 @@ overrides: [
 
 ## Ключевые файлы (для справки при следующих правках)
 
-- `src/permissions/types.ts` — `Action`, `UserContext`, `PolicyFn`, `CanFn`
-- `src/permissions/usePermissions.ts` — строго типизированный `can`
-- `src/permissions/resolver.ts` — `resolvePermission` (нужен dev-warning)
-- `src/access/types.ts` — `AccessGatedItem`, `AccessOverride<T>`
-- `src/access/accessible.ts` — `filterByPolicy`, `filterByDomain`, `filterAccessible`
-- `src/access/overrides.ts` — `applyOverrides<T>`
-- `src/access/resolve.ts` — `resolveGatedItems<T>` (композиция filter + overrides)
-- `src/access/strip.ts` — `stripAccessFields<T>`
-- `src/accessMatrix/types.ts` — `AccessRule`, `ExtendedAccess`
-- `src/accessMatrix/resolveAccess.ts` — главный резолвер матрицы
-- `src/accessMatrix/validateAccess.ts` — нужно расширить
-- `src/accessMatrix/taskTypeAccess.ts` — 17 boundary cases
-- `src/utils/optionUtils.ts` — `MasterOption extends AccessGatedItem`, `OptionTransform`, `resolveSelectOptions(… , domain?)` как тонкая обёртка над примитивами
-- `src/forms/order/resolvers/resolveOrderOptions.ts` — пример использования domain
-- `src/forms/order/useOrderFormConfig.ts` — пробрасывает `domain` сверху
-- `src/store/permissionsStore.ts` — `initialized`, нужен reset + runtime-валидация
-- `src/routes/ProtectedRoute.tsx` — loader + loop protection
+**shared/config:**
+- `src/shared/config/actions.ts` — `Action` union (flat)
+
+**shared/lib/access-policy** (generic):
+- `src/shared/lib/access-policy/types.ts` — `UserContext`, `PolicyFn`, `CanFn`
+- `src/shared/lib/access-policy/resolver.ts` — generic `resolvePermission(action, policies, ctx)`
+- `src/shared/lib/access-policy/context.tsx` — `PoliciesContext`
+
+**shared/lib/access** (generic array-primitives):
+- `src/shared/lib/access/types.ts` — `AccessGatedItem`, `AccessOverride<T>`
+- `src/shared/lib/access/accessible.ts` — `filterByPolicy`, `filterByDomain`, `filterAccessible`
+- `src/shared/lib/access/overrides.ts` — `applyOverrides<T>`
+- `src/shared/lib/access/resolve.ts` — `resolveGatedItems<T>`
+- `src/shared/lib/access/strip.ts` — `stripAccessFields<T>`
+
+**shared/lib/access-matrix** (generic matrix mechanism):
+- `src/shared/lib/access-matrix/types.ts` — `AccessRule`, `ExtendedAccess`, `AccessMatrix<TKey>`
+- `src/shared/lib/access-matrix/resolve.ts` — `resolveAccess<TKey>`
+- `src/shared/lib/access-matrix/validate.ts` — `validateAccessMatrix` (нужно расширить)
+
+**shared/lib/select-options:**
+- `src/shared/lib/select-options/index.ts` — `MasterOption`, `OptionTransform`, `resolveSelectOptions`, `extractValues`, `extractActiveValues`
+
+**entities:**
+- `src/entities/session/model/store.ts` — `usePermissionsStore` (нужен reset + runtime-валидация)
+- `src/entities/session/lib/predicates.ts` — `isAdmin`, `isManager`, `canExport`, etc.
+- `src/entities/task-type/model/access.ts` — `TASK_TYPE_ACCESS` (17 boundary cases)
+- `src/entities/task-type/model/options.ts` — `TASK_TYPE_OPTIONS` с overrides
+- `src/entities/column/model/access.ts` — `COLUMN_ACCESS`
+- `src/entities/priority/model/options.ts` — `PRIORITY_OPTIONS`
+
+**features:**
+- `src/features/access-gate/model/usePermissions.ts` — хук на PoliciesContext
+- `src/features/access-gate/ui/ProtectedRoute.tsx` — loader + loop protection через `redirectAction` prop
+- `src/features/access-gate/ui/Can.tsx` — condition-renderer
+- `src/features/orders/model/policies.ts` — `ordersPolicies: Partial<Record<Action, PolicyFn>>`
+- `src/features/export/model/policies.ts`
+- `src/features/admin/model/policies.ts`
+- `src/features/order-form/model/useOrderFormConfig.ts` — пробрасывает `domain`
+
+**app:**
+- `src/app/App.tsx` — композиция провайдеров
+- `src/app/providers/PermissionsProvider.tsx` — `setPermissions` из props
+- `src/app/providers/PoliciesProvider.tsx` — `appPolicies` в PoliciesContext
+- `src/app/model/common-policies.ts` — общие политики
+- `src/app/model/policies.ts` — `appPolicies` агрегатор
+- `src/app/routing/routeConfig.tsx` — `ROUTE_CONFIG`
+- `src/app/routing/AppRoutes.tsx` — `ProtectedRoute` с `redirectAction`
