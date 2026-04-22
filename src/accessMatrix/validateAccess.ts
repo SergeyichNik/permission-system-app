@@ -4,7 +4,7 @@ export function validateAccessMatrix<TKey extends string>(
   matrix: AccessMatrix<TKey>,
   label: string
 ): void {
-  if (process.env.NODE_ENV !== 'development') return
+  if (!import.meta.env.DEV) return
 
   for (const [id, rule] of Object.entries(matrix) as [string, AccessRule][]) {
     const tag = `[AccessMatrix:${label}] "${id}":`

@@ -6,6 +6,8 @@ export interface UserContext {
 
 export type PolicyFn = (ctx: UserContext) => boolean
 
+export type CanFn = (action: Action) => boolean
+
 export type Action =
   // orders domain
   | 'orders:page:view'

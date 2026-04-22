@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
 import { usePermissions } from '../../permissions/usePermissions'
-import { resolveOrderOptions } from './resolvers/resolveOrderOptions'
+import { resolveOrderOptions, type OrderFormDomain } from './resolvers/resolveOrderOptions'
 import { resolveOrderDefaults } from './resolvers/resolveOrderDefaults'
 import { resolveOrderSchemas } from './resolvers/resolveOrderSchemas'
 
-export function useOrderFormConfig() {
+export function useOrderFormConfig(domain: OrderFormDomain = 'my') {
   const { can, ctx } = usePermissions()
 
   return useMemo(() => {
-    const options  = resolveOrderOptions(can, ctx)
+    const options  = resolveOrderOptions(can, ctx, domain)
     const defaults = resolveOrderDefaults(options)
     const schemas  = resolveOrderSchemas(options, defaults)
 
@@ -21,5 +21,5 @@ export function useOrderFormConfig() {
         priority: { options: options.priorities },
       },
     }
-  }, [can, ctx])
+  }, [can, ctx, domain])
 }

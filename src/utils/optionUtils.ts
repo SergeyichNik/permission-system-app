@@ -1,11 +1,11 @@
-import type { UserContext } from '../permissions/types'
+import type { CanFn, UserContext } from '../permissions/types'
 
 export interface MasterOption<TMeta = unknown> {
   id: string
   label: string
   meta?: TMeta
   allowedIn?: string[]
-  policy: (can: (action: string) => boolean, ctx: UserContext) => boolean
+  policy: (can: CanFn, ctx: UserContext) => boolean
 }
 
 export interface ResolvedOption<TMeta = unknown> {
@@ -21,19 +21,21 @@ export interface OptionTransform<TMeta = unknown> {
   modify?: {
     [id: string]: (
       option: ResolvedOption<TMeta>,
-      can: (action: string) => boolean
+      can: CanFn
     ) => ResolvedOption<TMeta>
   }
 }
 
 export function resolveSelectOptions<TMeta>(
   masterList: MasterOption<TMeta>[],
-  can: (action: string) => boolean,
+  can: CanFn,
   ctx: UserContext,
-  transform?: OptionTransform<TMeta>
+  transform?: OptionTransform<TMeta>,
+  domain?: string
 ): ResolvedOption<TMeta>[] {
   return masterList
     .filter((opt) => opt.policy(can, ctx))
+    .filter((opt) => !domain || !opt.allowedIn || opt.allowedIn.includes(domain))
     .filter((opt) =>
       !transform?.allowedValues ||
       transform.allowedValues.includes(opt.id)
