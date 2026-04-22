@@ -1,5 +1,7 @@
-import type { AccessGatedItem } from '../access/types'
+import type { AccessGatedItem, AccessOverride } from '../access/types'
 import { filterAccessible } from '../access/accessible'
+import { applyOverrides } from '../access/overrides'
+import { stripAccessFields } from '../access/strip'
 import type { CanFn, UserContext } from '../permissions/types'
 
 export interface MasterOption<TMeta = unknown> extends AccessGatedItem {
@@ -7,6 +9,7 @@ export interface MasterOption<TMeta = unknown> extends AccessGatedItem {
   label: string
   meta?: TMeta
   policy: (can: CanFn, ctx: UserContext) => boolean
+  overrides?: AccessOverride<MasterOption<TMeta>>[]
 }
 
 export interface ResolvedOption<TMeta = unknown> {
@@ -35,11 +38,12 @@ export function resolveSelectOptions<TMeta>(
   domain?: string
 ): ResolvedOption<TMeta>[] {
   return filterAccessible(masterList, can, ctx, domain)
+    .map((opt) => applyOverrides(opt, can, ctx, domain))
     .filter(
       (opt) =>
         !transform?.allowedValues || transform.allowedValues.includes(opt.id)
     )
-    .map(({ policy: _policy, ...opt }) => opt as ResolvedOption<TMeta>)
+    .map((opt) => stripAccessFields(opt) as ResolvedOption<TMeta>)
     .map((opt) => transform?.modify?.[opt.id]?.(opt, can) ?? opt)
 }
 

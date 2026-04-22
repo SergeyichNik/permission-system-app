@@ -10,21 +10,21 @@
 
 ---
 
-## Score-card (итог: 68/90 ≈ 7.6/10 — было 63/90)
+## Score-card (итог: 70/90 ≈ 7.8/10 — было 63/90)
 
 | # | Критерий                                 | Балл  | Δ   |
 |---|------------------------------------------|-------|-----|
 | 1 | Type safety                              | 8/10  | +1  |
 | 2 | Архитектура / разделение ответственности | 9/10  | +1  |
-| 3 | Расширяемость                            | 8/10  | —   |
-| 4 | Читаемость / DX                          | 8/10  | —   |
+| 3 | Расширяемость                            | 9/10  | +1  |
+| 4 | Читаемость / DX                          | 9/10  | +1  |
 | 5 | Производительность                       | 7/10  | —   |
 | 6 | Тестируемость                            | 7/10  | —   |
 | 7 | Корректность / boundary cases            | 8/10  | +1  |
 | 8 | Production-readiness                     | 6/10  | +2  |
 | 9 | Соответствие industry standards          | 7/10  | —   |
 
-**Вердикт:** после двух проходов архитектура чистая (generic-примитивы отделены от UI-обёрток), boot-гонка закрыта, domain-фильтрация оживлена. Для переноса в боевой проект остаётся добить Production-readiness (audit-log, reset, runtime-валидация, реестр типов, тесты).
+**Вердикт:** после трёх проходов архитектура чистая (generic-примитивы отделены от UI-обёрток, overrides декларативные и работают с любой формой объекта), boot-гонка закрыта, domain-фильтрация оживлена. Для переноса в боевой проект остаётся добить Production-readiness (audit-log, reset, runtime-валидация, реестр типов, тесты).
 
 ---
 
@@ -260,7 +260,73 @@ filterByDomain(tabs, 'archive')
 filterAccessible(items, can, ctx, 'my')
 ```
 
-`npm run build` — зелёный после обоих проходов.
+## Сделано в третьем проходе (Part 7)
+
+| # | Что                                                                                          | Где                                                                  |
+|---|----------------------------------------------------------------------------------------------|----------------------------------------------------------------------|
+| 1 | `AccessOverride<T>` — декларативные перекрытия любых полей объекта по предикату `when(can, ctx, domain?)` | `src/access/types.ts`                                                |
+| 2 | `applyOverrides<T>`, `resolveGatedItems<T>`, `stripAccessFields<T>` — UI-агностичные утилиты | `src/access/overrides.ts`, `src/access/resolve.ts`, `src/access/strip.ts` |
+| 3 | `MasterOption.overrides?: AccessOverride<MasterOption<TMeta>>[]`, `resolveSelectOptions` применяет overrides и стрипает служебные поля | `src/utils/optionUtils.ts`                                           |
+| 4 | Два живых примера overrides: `action_basic_view` меняет label+color в домене `archive`; `action_pp_partner` меняет label+color для роли `admin` | `src/options/taskTypeOptions.ts`                                     |
+
+**Зачем Part 7:** `modify` в `OptionTransform` ограничен — видит только `can`, не `ctx`/`domain`, keyed by id, живёт во внешнем `transform`. Для варианта «поменять label/icon для конкретной роли/домена/флага» это неудобно. К тому же `MasterOption` навязывал `label`/`meta` другим UI-китам — если в проекте используется вторая библиотека с полем `title`, прежняя структура не подходила.
+
+**Ключевая идея:** ядро (`src/access/`) знает только `policy`, `allowedIn`, `overrides.patch: Partial<T>`. UI-поля (`label`/`title`/`text`/`icon`) — зона ответственности пользователя. Каждый UI-кит определяет свой shape через `extends AccessGatedItem`, `patch` автоматически типизируется под его поля.
+
+**Пример (action_basic_view, domain='archive'):**
+
+```ts
+{
+  id: 'action_basic_view',
+  label: 'View',
+  meta: { icon: '👁', color: 'blue' },
+  allowedIn: ['my', 'common', 'archive'],
+  policy: (_can, ctx) => canSeeTaskType('action_basic_view', ctx),
+  overrides: [
+    {
+      when: (_can, _ctx, domain) => domain === 'archive',
+      patch: { label: 'Read-only view', meta: { icon: '👁', color: 'gray' } },
+    },
+  ],
+}
+```
+
+**Пример с patch-функцией (читает текущее состояние опции):**
+
+```ts
+overrides: [
+  {
+    when: (_can, ctx) => ctx.roles.has('admin'),
+    patch: (opt) => ({
+      label: `${opt.label} (Admin View)`,
+      meta: { ...(opt.meta ?? { icon: '🤝', color: 'green' }), color: 'red' },
+    }),
+  },
+]
+```
+
+**Три слоя разделены чисто:**
+
+```
+┌─ src/access/  (UI-агностично, generic) ──────────────────────────┐
+│  AccessGatedItem, AccessOverride<T>                              │
+│  filterByPolicy, filterByDomain, filterAccessible                │
+│  applyOverrides, resolveGatedItems                               │
+│  stripAccessFields                                               │
+└──────────────────────────────────────────────────────────────────┘
+       ↑                              ↑
+┌─ src/utils/optionUtils.ts ─┐  ┌─ user-defined (табы, меню, etc) ─┐
+│  MasterOption (label,meta) │  │  interface TabItem               │
+│  resolveSelectOptions      │  │    extends AccessGatedItem       │
+│  (select-специфично)       │  │  { title, slug, …}               │
+└────────────────────────────┘  └──────────────────────────────────┘
+```
+
+**Семантика patch:**
+- `Partial<T>` — статический патч, shallow merge. `meta` как вложенный объект **заменяется целиком**.
+- `(item: T) => Partial<T>` — функция, читает текущее состояние (включая результат предыдущих overrides в цепочке) и возвращает патч. Используй когда нужен nested merge (`{ ...item.meta, color: 'red' }`).
+
+`npm run build` — зелёный после всех трёх проходов.
 
 ---
 
@@ -310,8 +376,11 @@ filterAccessible(items, can, ctx, 'my')
 - `src/permissions/types.ts` — `Action`, `UserContext`, `PolicyFn`, `CanFn`
 - `src/permissions/usePermissions.ts` — строго типизированный `can`
 - `src/permissions/resolver.ts` — `resolvePermission` (нужен dev-warning)
-- `src/access/types.ts` — `AccessGatedItem`
+- `src/access/types.ts` — `AccessGatedItem`, `AccessOverride<T>`
 - `src/access/accessible.ts` — `filterByPolicy`, `filterByDomain`, `filterAccessible`
+- `src/access/overrides.ts` — `applyOverrides<T>`
+- `src/access/resolve.ts` — `resolveGatedItems<T>` (композиция filter + overrides)
+- `src/access/strip.ts` — `stripAccessFields<T>`
 - `src/accessMatrix/types.ts` — `AccessRule`, `ExtendedAccess`
 - `src/accessMatrix/resolveAccess.ts` — главный резолвер матрицы
 - `src/accessMatrix/validateAccess.ts` — нужно расширить

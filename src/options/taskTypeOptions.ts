@@ -7,7 +7,19 @@ interface TaskTypeMeta {
 }
 
 export const TASK_TYPE_OPTIONS: MasterOption<TaskTypeMeta>[] = [
-  { id: 'action_basic_view'           satisfies TaskTypeId, label: 'View',            allowedIn: ['my', 'common', 'archive'], meta: { icon: '👁',  color: 'blue'   }, policy: (_can, ctx) => canSeeTaskType('action_basic_view', ctx) },
+  {
+    id: 'action_basic_view' satisfies TaskTypeId,
+    label: 'View',
+    allowedIn: ['my', 'common', 'archive'],
+    meta: { icon: '👁', color: 'blue' },
+    policy: (_can, ctx) => canSeeTaskType('action_basic_view', ctx),
+    overrides: [
+      {
+        when: (_can, _ctx, domain) => domain === 'archive',
+        patch: { label: 'Read-only view', meta: { icon: '👁', color: 'gray' } },
+      },
+    ],
+  },
   { id: 'action_nobody'               satisfies TaskTypeId, label: 'Nobody',           allowedIn: ['my'],                      meta: { icon: '🚷',  color: 'black'  }, policy: (_can, ctx) => canSeeTaskType('action_nobody', ctx) },
   { id: 'action_hidden_by_default'    satisfies TaskTypeId, label: 'Premium Action',   allowedIn: ['my', 'common'],            meta: { icon: '💎',  color: 'gold'   }, policy: (_can, ctx) => canSeeTaskType('action_hidden_by_default', ctx) },
   { id: 'action_hidden_opens_for_roles' satisfies TaskTypeId, label: 'Beta',           allowedIn: ['my'],                      meta: { icon: '🧪',  color: 'violet' }, policy: (_can, ctx) => canSeeTaskType('action_hidden_opens_for_roles', ctx) },
@@ -21,7 +33,22 @@ export const TASK_TYPE_OPTIONS: MasterOption<TaskTypeMeta>[] = [
   { id: 'action_open_except_courier'  satisfies TaskTypeId, label: 'No Courier',       allowedIn: ['my', 'common'],            meta: { icon: '🚚',  color: 'brown'  }, policy: (_can, ctx) => canSeeTaskType('action_open_except_courier', ctx) },
   { id: 'action_pp_priority'          satisfies TaskTypeId, label: 'Priority',         allowedIn: ['my', 'common'],            meta: { icon: '🎯',  color: 'pink'   }, policy: (_can, ctx) => canSeeTaskType('action_pp_priority', ctx) },
   { id: 'action_pp_advanced'          satisfies TaskTypeId, label: 'Advanced',         allowedIn: ['my', 'common'],            meta: { icon: '🚀',  color: 'indigo' }, policy: (_can, ctx) => canSeeTaskType('action_pp_advanced', ctx) },
-  { id: 'action_pp_partner'           satisfies TaskTypeId, label: 'Partner',          allowedIn: ['my', 'common'],            meta: { icon: '🤝',  color: 'green'  }, policy: (_can, ctx) => canSeeTaskType('action_pp_partner', ctx) },
+  {
+    id: 'action_pp_partner' satisfies TaskTypeId,
+    label: 'Partner',
+    allowedIn: ['my', 'common'],
+    meta: { icon: '🤝', color: 'green' },
+    policy: (_can, ctx) => canSeeTaskType('action_pp_partner', ctx),
+    overrides: [
+      {
+        when: (_can, ctx) => ctx.roles.has('admin'),
+        patch: (opt) => ({
+          label: `${opt.label} (Admin View)`,
+          meta: { ...(opt.meta ?? { icon: '🤝', color: 'green' }), color: 'red' },
+        }),
+      },
+    ],
+  },
   { id: 'action_xx_experimental'      satisfies TaskTypeId, label: 'Experimental',     allowedIn: ['my'],                      meta: { icon: '⚗️',  color: 'lime'   }, policy: (_can, ctx) => canSeeTaskType('action_xx_experimental', ctx) },
   { id: 'action_archive_restore'      satisfies TaskTypeId, label: 'Restore',          allowedIn: ['archive'],                 meta: { icon: '♻️',  color: 'slate'  }, policy: (_can, ctx) => canSeeTaskType('action_archive_restore', ctx) },
 ]

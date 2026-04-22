@@ -1,2 +1,5 @@
-export type { AccessGatedItem } from './types'
+export type { AccessGatedItem, AccessOverride } from './types'
 export { filterByPolicy, filterByDomain, filterAccessible } from './accessible'
+export { applyOverrides } from './overrides'
+export { resolveGatedItems } from './resolve'
+export { stripAccessFields } from './strip'
